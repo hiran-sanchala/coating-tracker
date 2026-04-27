@@ -13,27 +13,29 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #f1f5f9; font-family: 'DM Sans', sans-serif; }
 
-    /* ── Mobile-first table ── */
+    /* ── Table layout ── */
     .report-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .report-table th, .report-table td { overflow: hidden; }
 
-    /* Column widths — desktop */
-    .col-loc  { width: 28%; }
-    .col-q1   { width: 10%; }
-    .col-apr  { width: 10%; }
-    .col-bkg  { width: 16%; }
-    .col-est  { width: 16%; }
-    .col-gap  { width: 10%; }
+    /* ── Frozen header ── */
+    .table-wrap { overflow-x: auto; max-height: calc(100vh - 180px); overflow-y: auto; }
+    .report-table thead th { position: sticky; top: 0; z-index: 2; }
 
-    /* Mobile: tighter columns so all fit on screen */
+    /* Column widths */
+    .col-loc { width: 28%; }
+    .col-q1  { width: 10%; }
+    .col-apr { width: 10%; }
+    .col-bkg { width: 16%; }
+    .col-est { width: 16%; }
+    .col-gap { width: 10%; }
+
     @media (max-width: 600px) {
-      .col-loc  { width: 26%; }
-      .col-q1   { width: 9%; }
-      .col-apr  { width: 9%; }
-      .col-bkg  { width: 17%; }
-      .col-est  { width: 17%; }
-      .col-gap  { width: 12%; }
-
+      .col-loc { width: 26%; }
+      .col-q1  { width: 9%; }
+      .col-apr { width: 9%; }
+      .col-bkg { width: 17%; }
+      .col-est { width: 17%; }
+      .col-gap { width: 12%; }
       .report-table th { font-size: 8px !important; padding: 5px 2px !important; letter-spacing: 0 !important; }
       .report-table td { font-size: 10px !important; padding: 5px 3px !important; }
       .loc-name  { font-size: 10px !important; }
@@ -46,15 +48,30 @@
       .btn-update   { font-size: 12px !important; padding: 8px 14px !important; }
       .section-divider td { font-size: 9px !important; padding: 5px 8px !important; }
     }
+
+    /* ── Multi-outlet form styles ── */
+    .outlet-card { border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fff; transition: border-color 0.15s; }
+    .outlet-card.active { border-color: #3b82f6; background: #f0f9ff; }
+    .outlet-card .outlet-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+    .outlet-card .outlet-name { font-weight: 700; font-size: 13px; color: #0f172a; }
+    .outlet-card .outlet-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .outlet-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .num-inp { width: 100%; padding: 10px; border-radius: 8px; border: 1.5px solid #e2e8f0; font-size: 20px; font-weight: 800; text-align: center; outline: none; font-family: inherit; color: #0f172a; }
+    .num-inp:focus { border-color: #3b82f6; }
+    .inp-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: block; }
+    .saved-badge { font-size: 10px; background: #dcfce7; color: #16a34a; padding: 2px 7px; border-radius: 99px; font-weight: 700; }
+    .cluster-header-btn { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; color: #475569; }
+    .cluster-section { margin-bottom: 16px; }
+    .cluster-label { font-size: 11px; font-weight: 700; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 0 8px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
 // ══════════════════════════════════════════════════════
-//  FIREBASE CONFIG — paste your values here
+//  FIREBASE CONFIG
 // ══════════════════════════════════════════════════════
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyCxGR3OCM3GKJruyWkg9OwV1ar05m6fLp4",
@@ -109,6 +126,8 @@ const CLUSTERS = {
 };
 const ARENA_CLUSTERS     = ["Ahmedabad","Anand","Baroda","Surat","Navsari","Vapi Cluster","Rajkot","Bhavnagar"];
 const CLUSTER_WITH_TOTAL = ["Ahmedabad","Surat","Vapi Cluster"];
+// Clusters with only 1 outlet — show as single merged row
+const SINGLE_OUTLET_CLUSTERS = Object.keys(CLUSTERS).filter(c => CLUSTERS[c].length === 1);
 
 // ══════════════════════════════════════════════════════
 //  FIREBASE HOOK
@@ -116,7 +135,6 @@ const CLUSTER_WITH_TOTAL = ["Ahmedabad","Surat","Vapi Cluster"];
 function useFirebase() {
   const dbRef = useRef(null);
   const [ready, setReady] = useState(false);
-
   useEffect(() => {
     if (!IS_CONFIGURED) return;
     const loadScript = src => new Promise((res, rej) => {
@@ -135,31 +153,33 @@ function useFirebase() {
       } catch(e) { console.error(e); }
     })();
   }, []);
-
   const listen = cb => {
     if (!dbRef.current) return () => {};
     const ref = dbRef.current.ref("coatingData");
     ref.on("value", snap => cb(snap.val() || {}));
     return () => ref.off("value");
   };
-  const write = async (locId, bkg, estimate, updatedBy) => {
+  const writeMany = async (entries, updatedBy) => {
     if (!dbRef.current) throw new Error("Firebase not ready");
-    await dbRef.current.ref(`coatingData/${locId}`).set({
-      bkg: Number(bkg), estimate: Number(estimate),
-      updatedBy: updatedBy || "Unknown", updatedAt: new Date().toISOString(),
+    const updates = {};
+    entries.forEach(({ id, bkg, estimate }) => {
+      updates[`coatingData/${id}`] = { bkg: Number(bkg), estimate: Number(estimate), updatedBy: updatedBy||"Unknown", updatedAt: new Date().toISOString() };
     });
+    await dbRef.current.ref().update(updates);
   };
-  return { ready, listen, write };
+  return { ready, listen, writeMany };
 }
 
 // ══════════════════════════════════════════════════════
-//  LOCAL STORAGE FALLBACK
+//  LOCAL DB
 // ══════════════════════════════════════════════════════
 const localDB = {
-  read: () => { try { return JSON.parse(localStorage.getItem("coatingData") || "{}"); } catch { return {}; } },
-  write: (id, bkg, estimate, name) => {
+  read: () => { try { return JSON.parse(localStorage.getItem("coatingData")||"{}"); } catch { return {}; } },
+  writeMany: (entries, name) => {
     const d = localDB.read();
-    d[id] = { bkg: Number(bkg), estimate: Number(estimate), updatedBy: name||"?", updatedAt: new Date().toISOString() };
+    entries.forEach(({ id, bkg, estimate }) => {
+      d[id] = { bkg: Number(bkg), estimate: Number(estimate), updatedBy: name||"?", updatedAt: new Date().toISOString() };
+    });
     localStorage.setItem("coatingData", JSON.stringify(d));
     return d;
   },
@@ -168,11 +188,10 @@ const localDB = {
 // ══════════════════════════════════════════════════════
 //  UTILS
 // ══════════════════════════════════════════════════════
-const sum    = (ids, data, field) => ids.reduce((a, id) => a + (data[id]?.[field] || 0), 0);
-const sumTgt = (ids, field)       => ids.reduce((a, id) => a + (LOCATIONS.find(l => l.id === id)?.[field] || 0), 0);
-// FIX: APR GAP = APR TGT - ESTIMATE TILL DATE
-const gap    = (aprTgt, est)      => aprTgt - est;
-const gapSum = (ids, data)        => sumTgt(ids,"aprTgt") - sum(ids,data,"estimate");
+const sum     = (ids, data, field) => ids.reduce((a,id) => a + (data[id]?.[field]||0), 0);
+const sumTgt  = (ids, field)       => ids.reduce((a,id) => a + (LOCATIONS.find(l=>l.id===id)?.[field]||0), 0);
+const gap     = (aprTgt, est)      => aprTgt - est;
+const gapSum  = (ids, data)        => sumTgt(ids,"aprTgt") - sum(ids,data,"estimate");
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}) : null;
 const today   = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});
 
@@ -180,31 +199,51 @@ const today   = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long
 //  TABLE COMPONENTS
 // ══════════════════════════════════════════════════════
 const tdBase = { borderBottom:"1px solid #e2e8f0", verticalAlign:"middle", textAlign:"center" };
-const thBase = { borderBottom:"2px solid #1e293b", textAlign:"center", textTransform:"uppercase", letterSpacing:"0.05em", color:"#94a3b8", fontSize:11, padding:"9px 4px", fontWeight:700 };
+const thBase = { borderBottom:"2px solid #1e293b", textAlign:"center", textTransform:"uppercase", letterSpacing:"0.05em", color:"#94a3b8", fontSize:11, padding:"9px 4px", fontWeight:700, background:"#0f172a" };
 
 function Badge({ value, target }) {
-  const pct   = target ? (value/target)*100 : 0;
-  const color = pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+  const pct = target ? (value/target)*100 : 0;
+  const color = pct>=80 ? "#16a34a" : pct>=50 ? "#d97706" : "#dc2626";
   return <span className="badge" style={{ display:"inline-block", padding:"2px 6px", borderRadius:99, fontSize:11, fontWeight:700, color, background:color+"18" }}>{value}</span>;
 }
 
 function LocationRow({ id, data }) {
-  const loc = LOCATIONS.find(l => l.id === id);
-  const bkg = data[id]?.bkg || 0, est = data[id]?.estimate || 0;
-  const g   = gap(loc.aprTgt, est);
-  const ts  = fmtTime(data[id]?.updatedAt);
-  const who = data[id]?.updatedBy;
+  const loc = LOCATIONS.find(l=>l.id===id);
+  const bkg = data[id]?.bkg||0, est = data[id]?.estimate||0;
+  const g = gap(loc.aprTgt, est);
+  const ts = fmtTime(data[id]?.updatedAt), who = data[id]?.updatedBy;
   return (
-    <tr style={{ background:"#fff" }} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-      <td className="col-loc" style={{ ...tdBase, textAlign:"left", padding:"6px 6px 6px 10px" }}>
-        <span className="loc-name" style={{ fontWeight:500, fontSize:12 }}>{loc.name}</span>
-        {ts && <span className="loc-meta" style={{ display:"block", fontSize:9, color:"#94a3b8", marginTop:1 }}>{who ? who+" · " : ""}{ts}</span>}
+    <tr style={{background:"#fff"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+      <td className="col-loc" style={{...tdBase,textAlign:"left",padding:"6px 6px 6px 10px"}}>
+        <span className="loc-name" style={{fontWeight:500,fontSize:12}}>{loc.name}</span>
+        {ts && <span className="loc-meta" style={{display:"block",fontSize:9,color:"#94a3b8",marginTop:1}}>{who?who+" · ":""}{ts}</span>}
       </td>
-      <td className="col-q1"  style={{ ...tdBase, color:"#64748b" }}>{loc.q1Tgt}</td>
-      <td className="col-apr" style={{ ...tdBase, color:"#64748b" }}>{loc.aprTgt}</td>
-      <td className="col-bkg" style={tdBase}><Badge value={bkg} target={loc.aprTgt} /></td>
-      <td className="col-est" style={tdBase}><Badge value={est} target={loc.aprTgt} /></td>
-      <td className="col-gap" style={{ ...tdBase, fontWeight:700, color:g>0?"#dc2626":"#16a34a" }}>{g}</td>
+      <td className="col-q1"  style={{...tdBase,color:"#64748b"}}>{loc.q1Tgt}</td>
+      <td className="col-apr" style={{...tdBase,color:"#64748b"}}>{loc.aprTgt}</td>
+      <td className="col-bkg" style={tdBase}><Badge value={bkg} target={loc.aprTgt}/></td>
+      <td className="col-est" style={tdBase}><Badge value={est} target={loc.aprTgt}/></td>
+      <td className="col-gap" style={{...tdBase,fontWeight:700,color:g>0?"#dc2626":"#16a34a"}}>{g}</td>
+    </tr>
+  );
+}
+
+// Single-outlet cluster row — styled like cluster row (yellow) but shows the outlet data directly, no duplicate
+function SingleClusterRow({ cluster, id, data }) {
+  const loc = LOCATIONS.find(l=>l.id===id);
+  const bkg = data[id]?.bkg||0, est = data[id]?.estimate||0;
+  const g = gap(loc.aprTgt, est);
+  const ts = fmtTime(data[id]?.updatedAt), who = data[id]?.updatedBy;
+  return (
+    <tr style={{background:"#fef08a",fontWeight:700}}>
+      <td className="col-loc" style={{...tdBase,textAlign:"left",padding:"6px 6px 6px 10px",color:"#92400e"}}>
+        <span style={{fontSize:11}}>{cluster}</span>
+        {ts && <span style={{display:"block",fontSize:9,color:"#b45309",fontWeight:400,marginTop:1}}>{who?who+" · ":""}{ts}</span>}
+      </td>
+      <td className="col-q1"  style={{...tdBase,color:"#92400e"}}>{loc.q1Tgt}</td>
+      <td className="col-apr" style={{...tdBase,color:"#92400e"}}>{loc.aprTgt}</td>
+      <td className="col-bkg" style={tdBase}><Badge value={bkg} target={loc.aprTgt}/></td>
+      <td className="col-est" style={tdBase}><Badge value={est} target={loc.aprTgt}/></td>
+      <td className="col-gap" style={{...tdBase,fontWeight:800,color:g>0?"#dc2626":"#16a34a"}}>{g}</td>
     </tr>
   );
 }
@@ -214,13 +253,13 @@ function ClusterRow({ label, ids, data }) {
   const bkg=sum(ids,data,"bkg"), est=sum(ids,data,"estimate");
   const g=gapSum(ids,data);
   return (
-    <tr style={{ background:"#fef08a", fontWeight:700 }}>
-      <td className="col-loc" style={{ ...tdBase, textAlign:"left", padding:"6px 6px 6px 14px", color:"#92400e", fontSize:11 }}>{label}</td>
+    <tr style={{background:"#fef08a",fontWeight:700}}>
+      <td className="col-loc" style={{...tdBase,textAlign:"left",padding:"6px 6px 6px 14px",color:"#92400e",fontSize:11}}>{label}</td>
       <td className="col-q1"  style={tdBase}>{q1}</td>
       <td className="col-apr" style={tdBase}>{apr}</td>
-      <td className="col-bkg" style={tdBase}><Badge value={bkg} target={apr} /></td>
-      <td className="col-est" style={tdBase}><Badge value={est} target={apr} /></td>
-      <td className="col-gap" style={{ ...tdBase, fontWeight:800, color:g>0?"#dc2626":"#16a34a" }}>{g}</td>
+      <td className="col-bkg" style={tdBase}><Badge value={bkg} target={apr}/></td>
+      <td className="col-est" style={tdBase}><Badge value={est} target={apr}/></td>
+      <td className="col-gap" style={{...tdBase,fontWeight:800,color:g>0?"#dc2626":"#16a34a"}}>{g}</td>
     </tr>
   );
 }
@@ -230,13 +269,13 @@ function TotalRow({ label, ids, data, shade }) {
   const bkg=sum(ids,data,"bkg"), est=sum(ids,data,"estimate");
   const g=gapSum(ids,data);
   return (
-    <tr style={{ background:shade||"#0f172a", color:"#fff", fontWeight:800 }}>
-      <td className="col-loc" style={{ ...tdBase, textAlign:"left", padding:"7px 6px 7px 10px", color:"#fff", fontSize:12 }}>{label}</td>
-      <td className="col-q1"  style={{ ...tdBase, color:"#fff" }}>{q1}</td>
-      <td className="col-apr" style={{ ...tdBase, color:"#fff" }}>{apr}</td>
-      <td className="col-bkg" style={{ ...tdBase, color:"#fff" }}>{bkg}</td>
-      <td className="col-est" style={{ ...tdBase, color:"#fff" }}>{est}</td>
-      <td className="col-gap" style={{ ...tdBase, color:g>15?"#fca5a5":"#86efac" }}>{g}</td>
+    <tr style={{background:shade||"#0f172a",color:"#fff",fontWeight:800}}>
+      <td className="col-loc" style={{...tdBase,textAlign:"left",padding:"7px 6px 7px 10px",color:"#fff",fontSize:12}}>{label}</td>
+      <td className="col-q1"  style={{...tdBase,color:"#fff"}}>{q1}</td>
+      <td className="col-apr" style={{...tdBase,color:"#fff"}}>{apr}</td>
+      <td className="col-bkg" style={{...tdBase,color:"#fff"}}>{bkg}</td>
+      <td className="col-est" style={{...tdBase,color:"#fff"}}>{est}</td>
+      <td className="col-gap" style={{...tdBase,color:g>15?"#fca5a5":"#86efac"}}>{g}</td>
     </tr>
   );
 }
@@ -244,149 +283,195 @@ function TotalRow({ label, ids, data, shade }) {
 function SectionDivider({ label, bg }) {
   return (
     <tr className="section-divider">
-      <td colSpan={6} style={{ background:bg||"#f8fafc", padding:"6px 10px", fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.08em" }}>▸ {label}</td>
+      <td colSpan={6} style={{background:bg||"#f8fafc",padding:"6px 10px",fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:"0.08em"}}>▸ {label}</td>
     </tr>
   );
 }
 
 // ══════════════════════════════════════════════════════
-//  FORM VIEW  — with pre-filled last values
+//  MULTI-OUTLET FORM
 // ══════════════════════════════════════════════════════
 function FormView({ onBack, onSubmit, isLive, existingData }) {
-  const [loc,    setLoc]    = useState("");
-  const [bkg,    setBkg]    = useState("");
-  const [est,    setEst]    = useState("");
-  const [name,   setName]   = useState("");
-  const [done,   setDone]   = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [err,    setErr]    = useState("");
+  const [name,    setName]    = useState("");
+  const [entries, setEntries] = useState({}); // { locId: { bkg, est, expanded } }
+  const [saving,  setSaving]  = useState(false);
+  const [done,    setDone]    = useState(false);
+  const [err,     setErr]     = useState("");
+  const [savedCount, setSavedCount] = useState(0);
 
-  // FIX: when location changes, pre-fill with last saved values
-  useEffect(() => {
-    if (loc && existingData[loc]) {
-      setBkg(String(existingData[loc].bkg ?? ""));
-      setEst(String(existingData[loc].estimate ?? ""));
-    } else {
-      setBkg(""); setEst("");
-    }
-  }, [loc]);
+  const toggleOutlet = (id) => {
+    setEntries(prev => {
+      const already = !!prev[id];
+      if (already) {
+        const next = {...prev}; delete next[id]; return next;
+      } else {
+        const existing = existingData[id];
+        return { ...prev, [id]: {
+          bkg:  existing ? String(existing.bkg)      : "",
+          est:  existing ? String(existing.estimate)  : "",
+        }};
+      }
+    });
+  };
 
-  const selLoc    = LOCATIONS.find(l => l.id === loc);
-  const lastEntry = loc && existingData[loc];
-  const canSubmit = loc && bkg !== "" && est !== "" && !saving;
+  const updateEntry = (id, field, val) => {
+    setEntries(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }));
+  };
+
+  const selectedCount = Object.keys(entries).length;
+  const canSubmit = selectedCount > 0 && Object.values(entries).every(e => e.bkg !== "" && e.est !== "") && !saving;
 
   const handleSubmit = async () => {
     setErr(""); setSaving(true);
-    try { await onSubmit(loc, bkg, est, name); setDone(true); }
-    catch(e) { setErr("Save failed — " + e.message); }
+    try {
+      const payload = Object.entries(entries).map(([id, e]) => ({ id, bkg: e.bkg, estimate: e.est }));
+      await onSubmit(payload, name);
+      setSavedCount(payload.length);
+      setDone(true);
+    } catch(e) { setErr("Save failed — " + e.message); }
     setSaving(false);
   };
 
-  const reset = () => { setLoc(""); setBkg(""); setEst(""); setName(""); setDone(false); setErr(""); };
+  const reset = () => { setEntries({}); setName(""); setDone(false); setErr(""); setSavedCount(0); };
 
   const inp = { width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #e2e8f0", fontSize:14, outline:"none", boxSizing:"border-box", fontFamily:"inherit" };
 
-  return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e3a5f)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ background:"#fff", borderRadius:20, width:"100%", maxWidth:440, overflow:"hidden", boxShadow:"0 25px 60px rgba(0,0,0,0.4)" }}>
+  const allClusters = [...Object.keys(CLUSTERS)];
 
-        <div style={{ background:"linear-gradient(135deg,#1e3a5f,#0f172a)", padding:"22px 24px 20px", color:"#fff" }}>
-          <button onClick={onBack} style={{ background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", borderRadius:8, padding:"4px 12px", cursor:"pointer", fontSize:13, marginBottom:10 }}>← Dashboard</button>
-          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:21, fontWeight:800 }}>Update Coating Data</div>
-          <div style={{ fontSize:12, opacity:0.6, marginTop:3 }}>As on {today}</div>
-          <div style={{ marginTop:10, background:isLive?"rgba(34,197,94,0.15)":"rgba(251,191,36,0.2)", border:`1px solid ${isLive?"rgba(34,197,94,0.3)":"rgba(251,191,36,0.4)"}`, borderRadius:8, padding:"6px 12px", fontSize:12, color:isLive?"#86efac":"#fcd34d" }}>
+  return (
+    <div style={{minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e3a5f)"}}>
+      <div style={{maxWidth:520, margin:"0 auto", paddingBottom:40}}>
+
+        {/* Header */}
+        <div style={{background:"linear-gradient(135deg,#1e3a5f,#0f172a)", padding:"20px 20px 18px", color:"#fff", position:"sticky", top:0, zIndex:10}}>
+          <button onClick={onBack} style={{background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"4px 12px",cursor:"pointer",fontSize:13,marginBottom:10}}>← Dashboard</button>
+          <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:800}}>Update Coating Data</div>
+          <div style={{fontSize:12,opacity:0.6,marginTop:3}}>As on {today} · Select one or more outlets</div>
+          <div style={{marginTop:8,background:isLive?"rgba(34,197,94,0.15)":"rgba(251,191,36,0.2)",border:`1px solid ${isLive?"rgba(34,197,94,0.3)":"rgba(251,191,36,0.4)"}`,borderRadius:8,padding:"5px 12px",fontSize:11,color:isLive?"#86efac":"#fcd34d"}}>
             {isLive ? "🔴 Live — updates visible to everyone instantly" : "⚠ Firebase not configured — saving locally"}
           </div>
         </div>
 
-        {done ? (
-          <div style={{ padding:40, textAlign:"center" }}>
-            <div style={{ fontSize:52, marginBottom:10 }}>✅</div>
-            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800, color:"#0f172a" }}>Submitted!</div>
-            <div style={{ color:"#64748b", marginTop:8, fontSize:14 }}><b>{selLoc?.name}</b> updated</div>
-            <div style={{ marginTop:4, fontSize:13, color:"#94a3b8" }}>Bkg: {bkg} · Estimate: {est}</div>
-            <button onClick={reset} style={{ marginTop:20, background:"#1e3a5f", color:"#fff", border:"none", borderRadius:12, padding:"11px 24px", cursor:"pointer", fontWeight:700, fontSize:14 }}>Submit Another</button>
-          </div>
-        ) : (
-          <div style={{ padding:24 }}>
+        <div style={{padding:"16px 16px 0"}}>
 
-            {/* Name */}
-            <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>Your Name</label>
-              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Manager name" style={inp} />
+          {done ? (
+            <div style={{background:"#fff",borderRadius:16,padding:40,textAlign:"center",marginTop:8}}>
+              <div style={{fontSize:52,marginBottom:10}}>✅</div>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:800,color:"#0f172a"}}>All Saved!</div>
+              <div style={{color:"#64748b",marginTop:8,fontSize:14}}><b>{savedCount}</b> outlet{savedCount>1?"s":""} updated successfully</div>
+              <button onClick={reset} style={{marginTop:20,background:"#1e3a5f",color:"#fff",border:"none",borderRadius:12,padding:"11px 24px",cursor:"pointer",fontWeight:700,fontSize:14}}>Update More</button>
             </div>
-
-            {/* Location */}
-            <div style={{ marginBottom:14 }}>
-              <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>Location *</label>
-              <select value={loc} onChange={e=>setLoc(e.target.value)} style={{ ...inp, background:"#fff" }}>
-                <option value="">-- Select your location --</option>
-                {Object.entries(CLUSTERS).map(([cluster, ids]) => (
-                  <optgroup key={cluster} label={cluster}>
-                    {ids.map(id => {
-                      const l = LOCATIONS.find(x => x.id === id);
-                      return <option key={id} value={id}>{l?.name}</option>;
-                    })}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-
-            {/* Target + last update info */}
-            {loc && (
-              <div style={{ background:"#f0f9ff", border:"1px solid #bae6fd", borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#0369a1" }}>
-                <div style={{ display:"flex", gap:20, marginBottom: lastEntry ? 6 : 0 }}>
-                  <span><b>Apr Target:</b> {selLoc?.aprTgt}</span>
-                  <span><b>Q1 Target:</b> {selLoc?.q1Tgt}</span>
-                </div>
-                {lastEntry && (
-                  <div style={{ fontSize:11, color:"#0369a1", opacity:0.8 }}>
-                    Last updated by <b>{lastEntry.updatedBy}</b> at <b>{fmtTime(lastEntry.updatedAt)}</b> — Bkg: {lastEntry.bkg}, Est: {lastEntry.estimate}
-                  </div>
-                )}
+          ) : (
+            <>
+              {/* Manager name */}
+              <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}}>Your Name</label>
+                <input value={name} onChange={e=>setName(e.target.value)} placeholder="Manager name" style={inp}/>
               </div>
-            )}
 
-            {/* Numbers — pre-filled with last values */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:18 }}>
-              {[{ label:"Bkg Till Date *", val:bkg, set:setBkg }, { label:"Estimate Till Date *", val:est, set:setEst }].map(({ label, val, set }) => (
-                <div key={label}>
-                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>
-                  <input type="number" value={val} onChange={e=>set(e.target.value)} placeholder="0" min="0"
-                    style={{ ...inp, fontSize:22, fontWeight:800, textAlign:"center", color:"#0f172a" }} />
+              {/* Selected count pill */}
+              {selectedCount > 0 && (
+                <div style={{textAlign:"center",marginBottom:10}}>
+                  <span style={{background:"#1e3a5f",color:"#fff",borderRadius:99,padding:"4px 14px",fontSize:12,fontWeight:700}}>
+                    {selectedCount} outlet{selectedCount>1?"s":""} selected
+                  </span>
+                </div>
+              )}
+
+              {/* Outlet list by cluster */}
+              {allClusters.map(cluster => (
+                <div key={cluster} className="cluster-section">
+                  <div className="cluster-label">
+                    <span>{cluster}</span>
+                    {CLUSTERS[cluster].length > 1 && (
+                      <button className="cluster-header-btn" onClick={() => {
+                        const allSelected = CLUSTERS[cluster].every(id => entries[id]);
+                        CLUSTERS[cluster].forEach(id => {
+                          if (allSelected) {
+                            setEntries(prev => { const n={...prev}; delete n[id]; return n; });
+                          } else if (!entries[id]) {
+                            const existing = existingData[id];
+                            setEntries(prev => ({ ...prev, [id]: { bkg: existing?String(existing.bkg):"", est: existing?String(existing.estimate):"" } }));
+                          }
+                        });
+                      }}>
+                        {CLUSTERS[cluster].every(id => entries[id]) ? "Deselect All" : "Select All"}
+                      </button>
+                    )}
+                  </div>
+
+                  {CLUSTERS[cluster].map(id => {
+                    const loc   = LOCATIONS.find(l=>l.id===id);
+                    const entry = entries[id];
+                    const prev  = existingData[id];
+                    const isOpen = !!entry;
+
+                    return (
+                      <div key={id} className={`outlet-card ${isOpen?"active":""}`}>
+                        <div className="outlet-header" onClick={() => toggleOutlet(id)}>
+                          <div>
+                            <div className="outlet-name">
+                              {loc.name}
+                              {prev && <span className="saved-badge" style={{marginLeft:8}}>Last: Bkg {prev.bkg} / Est {prev.estimate}</span>}
+                            </div>
+                            <div className="outlet-meta">Apr Target: {loc.aprTgt} · Q1: {loc.q1Tgt}</div>
+                          </div>
+                          <div style={{fontSize:18, color: isOpen?"#3b82f6":"#cbd5e1", fontWeight:700}}>
+                            {isOpen ? "✓" : "+"}
+                          </div>
+                        </div>
+
+                        {isOpen && (
+                          <div className="outlet-inputs">
+                            <div>
+                              <label className="inp-label">Bkg Till Date</label>
+                              <input type="number" className="num-inp" value={entry.bkg} min="0"
+                                onChange={e => updateEntry(id,"bkg",e.target.value)}
+                                placeholder="0" onClick={e=>e.stopPropagation()}/>
+                            </div>
+                            <div>
+                              <label className="inp-label">Estimate Till Date</label>
+                              <input type="number" className="num-inp" value={entry.est} min="0"
+                                onChange={e => updateEntry(id,"est",e.target.value)}
+                                placeholder="0" onClick={e=>e.stopPropagation()}/>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
-            </div>
 
-            {err && <div style={{ background:"#fef2f2", border:"1px solid #fca5a5", borderRadius:8, padding:"8px 12px", fontSize:13, color:"#dc2626", marginBottom:12 }}>{err}</div>}
+              {err && <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#dc2626",marginBottom:12}}>{err}</div>}
 
-            <button onClick={handleSubmit} disabled={!canSubmit}
-              style={{ width:"100%", padding:"13px", background:canSubmit?"linear-gradient(135deg,#1e3a5f,#2563eb)":"#e2e8f0", color:canSubmit?"#fff":"#94a3b8", border:"none", borderRadius:12, fontSize:15, fontWeight:700, cursor:canSubmit?"pointer":"not-allowed" }}>
-              {saving ? "Saving…" : "Submit Update"}
-            </button>
-          </div>
-        )}
+              {/* Sticky submit */}
+              <div style={{position:"sticky",bottom:0,paddingTop:12,paddingBottom:16,background:"linear-gradient(to top,#0f1f3d,transparent)"}}>
+                <button onClick={handleSubmit} disabled={!canSubmit}
+                  style={{width:"100%",padding:"14px",background:canSubmit?"linear-gradient(135deg,#1e3a5f,#2563eb)":"#334155",color:canSubmit?"#fff":"#64748b",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:canSubmit?"pointer":"not-allowed",boxShadow:canSubmit?"0 4px 20px rgba(37,99,235,0.4)":"none",transition:"all 0.2s"}}>
+                  {saving ? "Saving…" : canSubmit ? `Submit ${selectedCount} Outlet${selectedCount>1?"s":""}` : "Tap outlets above to select"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════
-//  DOWNLOAD AS IMAGE
+//  DOWNLOAD IMAGE
 // ══════════════════════════════════════════════════════
 function downloadImage(tableRef) {
   if (!tableRef.current) return;
-  html2canvas(tableRef.current, {
-    scale: 2,
-    backgroundColor: "#f1f5f9",
-    useCORS: true,
-    logging: false,
-  }).then(canvas => {
-    const link = document.createElement("a");
-    link.download = `Coating-Report-${new Date().toLocaleDateString("en-IN").replace(/\//g,"-")}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  });
+  html2canvas(tableRef.current, { scale:2, backgroundColor:"#f1f5f9", useCORS:true, logging:false })
+    .then(canvas => {
+      const link = document.createElement("a");
+      link.download = `Coating-Report-${new Date().toLocaleDateString("en-IN").replace(/\//g,"-")}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
 }
 
 // ══════════════════════════════════════════════════════
@@ -412,119 +497,126 @@ function CoatingTracker() {
     }
   }, [firebase.ready]);
 
-  const handleSubmit = async (locId, bkg, est, name) => {
+  // Now accepts array of entries for multi-outlet
+  const handleSubmit = async (entries, name) => {
     if (firebase.ready) {
-      await firebase.write(locId, bkg, est, name);
+      await firebase.writeMany(entries, name);
     } else {
-      const updated = localDB.write(locId, bkg, est, name);
+      const updated = localDB.writeMany(entries, name);
       setData(updated);
       setLastUpdate(new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}));
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     setCapturing(true);
-    setTimeout(() => {
-      downloadImage(tableRef);
-      setTimeout(() => setCapturing(false), 1000);
-    }, 100);
+    setTimeout(() => { downloadImage(tableRef); setTimeout(()=>setCapturing(false),1000); }, 100);
   };
 
-  const allArenaIds = ARENA_CLUSTERS.flatMap(c => CLUSTERS[c]);
+  const allArenaIds = ARENA_CLUSTERS.flatMap(c=>CLUSTERS[c]);
   const allNexaIds  = CLUSTERS["Nexa"];
   const allIds      = [...allArenaIds, ...allNexaIds];
 
   if (view === "form") {
-    return <FormView onBack={()=>setView("dashboard")} onSubmit={handleSubmit} isLive={firebase.ready} existingData={data} />;
+    return <FormView onBack={()=>setView("dashboard")} onSubmit={handleSubmit} isLive={firebase.ready} existingData={data}/>;
   }
 
   const kpis = [
-    { label:"Q1 Target",          value:sumTgt(allIds,"q1Tgt"),             accent:"#1e3a5f" },
-    { label:"Apr Target",         value:sumTgt(allIds,"aprTgt"),             accent:"#7c3aed" },
-    { label:"Bkg Till Date",      value:sum(allIds,data,"bkg"),              accent:"#0891b2" },
-    { label:"Estimate Till Date", value:sum(allIds,data,"estimate"),         accent:"#059669" },
-    { label:"April Gap",          value:gapSum(allIds,data),                 accent:"#dc2626" },
+    { label:"Q1 Target",    value:sumTgt(allIds,"q1Tgt"),     accent:"#1e3a5f" },
+    { label:"Apr Target",   value:sumTgt(allIds,"aprTgt"),     accent:"#7c3aed" },
+    { label:"Bkg Till Date",value:sum(allIds,data,"bkg"),      accent:"#0891b2" },
+    { label:"Estimate",     value:sum(allIds,data,"estimate"), accent:"#059669" },
+    { label:"April Gap",    value:gapSum(allIds,data),         accent:"#dc2626" },
   ];
 
   return (
-    <div style={{ minHeight:"100vh", background:"#f1f5f9" }}>
+    <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
 
-      {/* Top bar */}
-      <div style={{ background:"linear-gradient(135deg,#0f172a,#1e3a5f)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap" }}>
+      {/* Sticky top bar */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"linear-gradient(135deg,#0f172a,#1e3a5f)",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",boxShadow:"0 2px 10px rgba(0,0,0,0.3)"}}>
         <div>
-          <div className="topbar-title" style={{ fontFamily:"'Syne',sans-serif", fontSize:17, fontWeight:800, color:"#fff", display:"flex", alignItems:"center", gap:8 }}>
+          <div className="topbar-title" style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",gap:8}}>
             Coating Progress Report
-            <span style={{ fontSize:10, padding:"2px 7px", borderRadius:99, background:firebase.ready?"rgba(34,197,94,0.2)":"rgba(251,191,36,0.2)", color:firebase.ready?"#86efac":"#fcd34d" }}>
-              {firebase.ready ? "🔴 LIVE" : "LOCAL"}
+            <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:firebase.ready?"rgba(34,197,94,0.2)":"rgba(251,191,36,0.2)",color:firebase.ready?"#86efac":"#fcd34d"}}>
+              {firebase.ready?"🔴 LIVE":"LOCAL"}
             </span>
           </div>
-          <div className="topbar-sub" style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
-            Q1 Till Date · {today}{lastUpdate && ` · Updated: ${lastUpdate}`}
+          <div className="topbar-sub" style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
+            Q1 Till Date · {today}{lastUpdate&&` · Updated: ${lastUpdate}`}
           </div>
         </div>
-        <div style={{ display:"flex", gap:8 }}>
+        <div style={{display:"flex",gap:8}}>
           <button onClick={handleDownload} disabled={capturing}
-            style={{ background:"#1e293b", color:"#94a3b8", border:"1px solid #334155", borderRadius:10, padding:"8px 14px", fontWeight:600, fontSize:12, cursor:"pointer" }}>
-            {capturing ? "Capturing…" : "📷 Download"}
+            style={{background:"#1e293b",color:"#94a3b8",border:"1px solid #334155",borderRadius:10,padding:"8px 12px",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+            {capturing?"Capturing…":"📷 Download"}
           </button>
           <button className="btn-update" onClick={()=>setView("form")}
-            style={{ background:"#f97316", color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontWeight:700, fontSize:13, cursor:"pointer", boxShadow:"0 4px 14px rgba(249,115,22,0.4)" }}>
+            style={{background:"#f97316",color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 4px 14px rgba(249,115,22,0.4)"}}>
             + Update Data
           </button>
         </div>
       </div>
 
-      {/* Capture area starts here */}
-      <div ref={tableRef} style={{ background:"#f1f5f9" }}>
+      {/* Capture zone */}
+      <div ref={tableRef} style={{background:"#f1f5f9"}}>
 
         {/* KPI cards */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8, padding:"12px 12px 0" }}>
-          {kpis.map(({ label, value, accent }) => (
-            <div key={label} style={{ background:"#fff", borderRadius:10, padding:"10px 10px", boxShadow:"0 2px 6px rgba(0,0,0,0.06)", borderTop:`3px solid ${accent}` }}>
-              <div className="kpi-label" style={{ fontSize:9, color:"#94a3b8", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.04em" }}>{label}</div>
-              <div className="kpi-val" style={{ fontSize:22, fontWeight:800, color:accent, fontFamily:"'Syne',sans-serif", marginTop:2 }}>{value}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,padding:"12px 12px 0"}}>
+          {kpis.map(({label,value,accent}) => (
+            <div key={label} style={{background:"#fff",borderRadius:10,padding:"10px",boxShadow:"0 2px 6px rgba(0,0,0,0.06)",borderTop:`3px solid ${accent}`}}>
+              <div className="kpi-label" style={{fontSize:9,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</div>
+              <div className="kpi-val" style={{fontSize:22,fontWeight:800,color:accent,fontFamily:"'Syne',sans-serif",marginTop:2}}>{value}</div>
             </div>
           ))}
         </div>
 
-        {/* Table */}
-        <div style={{ margin:"10px 12px 16px", background:"#fff", borderRadius:12, overflow:"hidden", boxShadow:"0 2px 10px rgba(0,0,0,0.08)" }}>
-          <table className="report-table">
-            <thead>
-              <tr style={{ background:"#0f172a" }}>
-                <th className="col-loc" style={{ ...thBase, textAlign:"left", paddingLeft:10, color:"#e2e8f0" }}>LOCATION</th>
-                <th className="col-q1"  style={thBase}>Q1</th>
-                <th className="col-apr" style={thBase}>APR</th>
-                <th className="col-bkg" style={{ ...thBase, color:"#7dd3fc" }}>BKG</th>
-                <th className="col-est" style={{ ...thBase, color:"#86efac" }}>EST</th>
-                <th className="col-gap" style={{ ...thBase, color:"#fca5a5" }}>GAP</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SectionDivider label="Arena" bg="#f8fafc" />
-              {ARENA_CLUSTERS.map(cluster => (
-                <React.Fragment key={cluster}>
-                  {CLUSTERS[cluster].map(id => <LocationRow key={id} id={id} data={data} />)}
-                  <ClusterRow
-                    label={CLUSTER_WITH_TOTAL.includes(cluster) ? `${cluster} Total` : cluster}
-                    ids={CLUSTERS[cluster]} data={data}
-                  />
-                </React.Fragment>
-              ))}
-              <TotalRow label="Arena Gujarat Total" ids={allArenaIds} data={data} shade="#1e293b" />
+        {/* Table with frozen header */}
+        <div style={{margin:"10px 12px 16px",background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)"}}>
+          <div className="table-wrap">
+            <table className="report-table">
+              <thead>
+                <tr style={{background:"#0f172a"}}>
+                  <th className="col-loc" style={{...thBase,textAlign:"left",paddingLeft:10,color:"#e2e8f0"}}>LOCATION</th>
+                  <th className="col-q1"  style={thBase}>Q1</th>
+                  <th className="col-apr" style={thBase}>APR</th>
+                  <th className="col-bkg" style={{...thBase,color:"#7dd3fc"}}>BKG</th>
+                  <th className="col-est" style={{...thBase,color:"#86efac"}}>EST</th>
+                  <th className="col-gap" style={{...thBase,color:"#fca5a5"}}>GAP</th>
+                </tr>
+              </thead>
+              <tbody>
+                <SectionDivider label="Arena" bg="#f8fafc"/>
+                {ARENA_CLUSTERS.map(cluster => {
+                  const ids = CLUSTERS[cluster];
+                  const isSingle = ids.length === 1;
+                  if (isSingle) {
+                    // Single-outlet cluster: one merged yellow row, no duplicate
+                    return <SingleClusterRow key={cluster} cluster={cluster} id={ids[0]} data={data}/>;
+                  }
+                  return (
+                    <React.Fragment key={cluster}>
+                      {ids.map(id => <LocationRow key={id} id={id} data={data}/>)}
+                      <ClusterRow
+                        label={CLUSTER_WITH_TOTAL.includes(cluster) ? `${cluster} Total` : cluster}
+                        ids={ids} data={data}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+                <TotalRow label="Arena Gujarat Total" ids={allArenaIds} data={data} shade="#1e293b"/>
 
-              <SectionDivider label="Nexa" bg="#f0f9ff" />
-              {CLUSTERS["Nexa"].map(id => <LocationRow key={id} id={id} data={data} />)}
-              <TotalRow label="Nexa Gujarat Total" ids={allNexaIds} data={data} shade="#1e293b" />
-              <TotalRow label="Group Total" ids={allIds} data={data} shade="#0f172a" />
-            </tbody>
-          </table>
-          <div style={{ padding:"8px 12px", background:"#fef9c3", fontSize:11, color:"#92400e", fontWeight:600 }}>
+                <SectionDivider label="Nexa" bg="#f0f9ff"/>
+                {CLUSTERS["Nexa"].map(id => <LocationRow key={id} id={id} data={data}/>)}
+                <TotalRow label="Nexa Gujarat Total" ids={allNexaIds} data={data} shade="#1e293b"/>
+                <TotalRow label="Group Total" ids={allIds} data={data} shade="#0f172a"/>
+              </tbody>
+            </table>
+          </div>
+          <div style={{padding:"8px 12px",background:"#fef9c3",fontSize:11,color:"#92400e",fontWeight:600}}>
             As on date {today} · Coating Progress Report Q1
           </div>
         </div>
-
-      </div>{/* end capture area */}
+      </div>
     </div>
   );
 }
