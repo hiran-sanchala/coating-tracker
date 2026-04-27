@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coating Progress Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ════════════════════════════════════════════════════════════════════
+//  STEP 1 — Paste your Firebase config here (from Firebase Console)
+//  console.firebase.google.com → Project Settings → Your apps → SDK
+// ════════════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID",
+};
+
+const IS_CONFIGURED = !FIREBASE_CONFIG.apiKey.includes("YOUR_");
+
+// ════════════════════════════════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════════════════════════════════
+const LOCATIONS = [
+  { id: "dariyapur",        name: "Dariyapur",                                     cluster: "Ahmedabad",    q1Tgt: 21, aprTgt: 7  },
+  { id: "maninagar",        name: "Maninagar",                                     cluster: "Ahmedabad",    q1Tgt: 30, aprTgt: 10 },
+  { id: "makarba",          name: "MAKARBA",                                       cluster: "Ahmedabad",    q1Tgt: 30, aprTgt: 10 },
+  { id: "bbcc",             name: "BBCC",                                          cluster: "Ahmedabad",    q1Tgt: 21, aprTgt: 7  },
+  { id: "anand",            name: "Anand",                                         cluster: "Anand",        q1Tgt: 33, aprTgt: 11 },
+  { id: "baroda",           name: "Baroda",                                        cluster: "Baroda",       q1Tgt: 48, aprTgt: 16 },
+  { id: "piplod_cluster",   name: "Piplod+Kosamba+Mangrol+Kim+Kadodara+Zankhvav", cluster: "Surat",        q1Tgt: 43, aprTgt: 15 },
+  { id: "puna_patiya",      name: "Puna Patiya",                                   cluster: "Surat",        q1Tgt: 11, aprTgt: 4  },
+  { id: "bardoli_mahuva",   name: "Bardoli + Mahuva",                             cluster: "Surat",        q1Tgt: 27, aprTgt: 9  },
+  { id: "navsari",          name: "Navsari",                                       cluster: "Navsari",      q1Tgt: 40, aprTgt: 14 },
+  { id: "vapi",             name: "Vapi",                                          cluster: "Vapi Cluster", q1Tgt: 33, aprTgt: 11 },
+  { id: "valsad",           name: "Valsad",                                        cluster: "Vapi Cluster", q1Tgt: 33, aprTgt: 11 },
+  { id: "silvassa",         name: "Silvassa",                                      cluster: "Vapi Cluster", q1Tgt: 30, aprTgt: 10 },
+  { id: "rajkot",           name: "Rajkot",                                        cluster: "Rajkot",       q1Tgt: 39, aprTgt: 13 },
+  { id: "bhavnagar",        name: "Bhavnagar",                                     cluster: "Bhavnagar",    q1Tgt: 30, aprTgt: 10 },
+  { id: "prahladnagar_nexa",name: "Prahladnagar Nexa",                            cluster: "Nexa",         q1Tgt: 54, aprTgt: 18 },
+  { id: "ambawadi_nexa",    name: "Ambawadi Nexa",                                 cluster: "Nexa",         q1Tgt: 33, aprTgt: 11 },
+  { id: "gandhinagar_nexa", name: "Gandhinagar Nexa",                              cluster: "Nexa",         q1Tgt: 21, aprTgt: 7  },
+  { id: "baroda_nexa",      name: "Baroda Nexa + Dabhoi",                         cluster: "Nexa",         q1Tgt: 48, aprTgt: 16 },
+  { id: "surat_nexa",       name: "Surat Nexa",                                    cluster: "Nexa",         q1Tgt: 40, aprTgt: 13 },
+  { id: "vapi_nexa",        name: "Vapi Nexa + Valsad + Daman",                   cluster: "Nexa",         q1Tgt: 53, aprTgt: 18 },
+  { id: "rajkot_nexa",      name: "Rajkot Nexa + Botad + Veraval",                cluster: "Nexa",         q1Tgt: 75, aprTgt: 25 },
+  { id: "navsari_nexa",     name: "Navsari Nexa + Chikhli",                       cluster: "Nexa",         q1Tgt: 29, aprTgt: 10 },
+];
+
+const CLUSTERS = {
+  Ahmedabad:     ["dariyapur","maninagar","makarba","bbcc"],
+  Anand:         ["anand"],
+  Baroda:        ["baroda"],
+  Surat:         ["piplod_cluster","puna_patiya","bardoli_mahuva"],
+  Navsari:       ["navsari"],
+  "Vapi Cluster":["vapi","valsad","silvassa"],
+  Rajkot:        ["rajkot"],
+  Bhavnagar:     ["bhavnagar"],
+  Nexa:          ["prahladnagar_nexa","ambawadi_nexa","gandhinagar_nexa","baroda_nexa","surat_nexa","vapi_nexa","rajkot_nexa","navsari_nexa"],
+};
+
+const ARENA_CLUSTERS    = ["Ahmedabad","Anand","Baroda","Surat","Navsari","Vapi Cluster","Rajkot","Bhavnagar"];
+const CLUSTER_WITH_TOTAL = ["Ahmedabad","Surat","Vapi Cluster"];
+
+// ════════════════════════════════════════════════════════════════════
+//  FIREBASE HOOK  — dynamically loads SDK, no npm needed
+// ════════════════════════════════════════════════════════════════════
+function useFirebase() {
+  const dbRef  = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [fbErr, setFbErr] = useState(null);
+
+  useEffect(() => {
+    if (!IS_CONFIGURED) return;
+
+    const loadScript = src => new Promise((res, rej) => {
+      if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+      const s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+
+    (async () => {
+      try {
+        await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+        await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js");
+        if (!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
+        dbRef.current = window.firebase.database();
+        setReady(true);
+      } catch (e) {
+        setFbErr(e.message);
+      }
+    })();
+  }, []);
+
+  const listen = cb => {
+    if (!dbRef.current) return () => {};
+    const ref = dbRef.current.ref("coatingData");
+    ref.on("value", snap => cb(snap.val() || {}));
+    return () => ref.off("value");
+  };
+
+  const write = async (locId, bkg, estimate, updatedBy) => {
+    if (!dbRef.current) throw new Error("Firebase not ready");
+    await dbRef.current.ref(`coatingData/${locId}`).set({
+      bkg: Number(bkg),
+      estimate: Number(estimate),
+      updatedBy: updatedBy || "Unknown",
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  return { ready, fbErr, listen, write };
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  LOCAL STORAGE FALLBACK
+// ════════════════════════════════════════════════════════════════════
+const localDB = {
+  read: () => { try { return JSON.parse(localStorage.getItem("coatingData") || "{}"); } catch { return {}; } },
+  write: (id, bkg, estimate, name) => {
+    const d = localDB.read();
+    d[id] = { bkg: Number(bkg), estimate: Number(estimate), updatedBy: name || "?", updatedAt: new Date().toISOString() };
+    localStorage.setItem("coatingData", JSON.stringify(d));
+    return d;
+  },
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════════════════════════
+const sum    = (ids, data, field) => ids.reduce((a, id) => a + (data[id]?.[field] || 0), 0);
+const sumTgt = (ids, field)       => ids.reduce((a, id) => a + (LOCATIONS.find(l => l.id === id)?.[field] || 0), 0);
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : null;
+const today   = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+
+// ════════════════════════════════════════════════════════════════════
+//  STYLES
+// ════════════════════════════════════════════════════════════════════
+const S = {
+  td:  { padding: "7px 10px", borderBottom: "1px solid #e2e8f0", fontSize: 13 },
+  th:  { padding: "10px 8px", fontSize: 11, fontWeight: 700, textAlign: "center", color: "#94a3b8", borderBottom: "2px solid #1e293b", letterSpacing: "0.06em", textTransform: "uppercase" },
+  inp: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" },
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  TABLE SUB-COMPONENTS
+// ════════════════════════════════════════════════════════════════════
+function Badge({ value, target }) {
+  const pct   = target ? (value / target) * 100 : 0;
+  const color = pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+  return <span style={{ display:"inline-block", padding:"2px 9px", borderRadius:99, fontSize:12, fontWeight:700, color, background:color+"18" }}>{value}</span>;
+}
+
+function LocationRow({ id, data }) {
+  const loc = LOCATIONS.find(l => l.id === id);
+  const bkg = data[id]?.bkg || 0, est = data[id]?.estimate || 0;
+  const gap = loc.aprTgt - bkg - est;
+  const ts  = fmtTime(data[id]?.updatedAt);
+  const who = data[id]?.updatedBy;
+  return (
+    <tr style={{ background:"#fff", transition:"background 0.12s" }}
+        onMouseEnter={e => e.currentTarget.style.background="#f8fafc"}
+        onMouseLeave={e => e.currentTarget.style.background="#fff"}>
+      <td style={{ ...S.td, fontWeight:500 }}>
+        {loc.name}
+        {ts && <span style={{ marginLeft:7, fontSize:10, color:"#94a3b8" }}>· {who ? who+" · " : ""}{ts}</span>}
+      </td>
+      <td style={{ ...S.td, textAlign:"center", color:"#64748b" }}>{loc.q1Tgt}</td>
+      <td style={{ ...S.td, textAlign:"center", color:"#64748b" }}>{loc.aprTgt}</td>
+      <td style={{ ...S.td, textAlign:"center" }}><Badge value={bkg} target={loc.aprTgt} /></td>
+      <td style={{ ...S.td, textAlign:"center" }}><Badge value={est} target={loc.aprTgt} /></td>
+      <td style={{ ...S.td, textAlign:"center", fontWeight:700, color: gap>0?"#dc2626":"#16a34a" }}>{gap}</td>
+    </tr>
+  );
+}
+
+function ClusterRow({ label, ids, data }) {
+  const q1=sumTgt(ids,"q1Tgt"), apr=sumTgt(ids,"aprTgt");
+  const bkg=sum(ids,data,"bkg"), est=sum(ids,data,"estimate");
+  const gap=apr-bkg-est;
+  return (
+    <tr style={{ background:"#fef08a", fontWeight:700 }}>
+      <td style={{ ...S.td, color:"#92400e", paddingLeft:16 }}>{label}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{q1}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{apr}</td>
+      <td style={{ ...S.td, textAlign:"center" }}><Badge value={bkg} target={apr} /></td>
+      <td style={{ ...S.td, textAlign:"center" }}><Badge value={est} target={apr} /></td>
+      <td style={{ ...S.td, textAlign:"center", fontWeight:800, color:gap>0?"#dc2626":"#16a34a" }}>{gap}</td>
+    </tr>
+  );
+}
+
+function TotalRow({ label, ids, data, shade }) {
+  const q1=sumTgt(ids,"q1Tgt"), apr=sumTgt(ids,"aprTgt");
+  const bkg=sum(ids,data,"bkg"), est=sum(ids,data,"estimate");
+  const gap=apr-bkg-est;
+  return (
+    <tr style={{ background:shade||"#0f172a", color:"#fff", fontWeight:800 }}>
+      <td style={{ ...S.td, fontSize:13 }}>{label}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{q1}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{apr}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{bkg}</td>
+      <td style={{ ...S.td, textAlign:"center" }}>{est}</td>
+      <td style={{ ...S.td, textAlign:"center", color:gap>15?"#fca5a5":"#86efac" }}>{gap}</td>
+    </tr>
+  );
+}
+
+function SectionDivider({ label, bg }) {
+  return (
+    <tr>
+      <td colSpan={6} style={{ background:bg||"#f8fafc", padding:"8px 14px", fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.08em" }}>
+        ▸ {label}
+      </td>
+    </tr>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  FORM VIEW
+// ════════════════════════════════════════════════════════════════════
+function FormView({ onBack, onSubmit, isLive }) {
+  const [loc,    setLoc]    = useState("");
+  const [bkg,    setBkg]    = useState("");
+  const [est,    setEst]    = useState("");
+  const [name,   setName]   = useState("");
+  const [done,   setDone]   = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState("");
+
+  const selLoc    = LOCATIONS.find(l => l.id === loc);
+  const canSubmit = loc && bkg !== "" && est !== "" && !saving;
+
+  const handleSubmit = async () => {
+    setErr("");
+    setSaving(true);
+    try {
+      await onSubmit(loc, bkg, est, name);
+      setDone(true);
+    } catch (e) {
+      setErr("Save failed — " + e.message);
+    }
+    setSaving(false);
+  };
+
+  const reset = () => { setLoc(""); setBkg(""); setEst(""); setName(""); setDone(false); setErr(""); };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e3a5f)", display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"'DM Sans',sans-serif" }}>
+      <div style={{ background:"#fff", borderRadius:20, width:"100%", maxWidth:440, overflow:"hidden", boxShadow:"0 25px 60px rgba(0,0,0,0.4)" }}>
+
+        {/* Header */}
+        <div style={{ background:"linear-gradient(135deg,#1e3a5f,#0f172a)", padding:"24px 28px 22px", color:"#fff" }}>
+          <button onClick={onBack} style={{ background:"rgba(255,255,255,0.12)", border:"none", color:"#fff", borderRadius:8, padding:"4px 12px", cursor:"pointer", fontSize:13, marginBottom:12 }}>← Dashboard</button>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:800 }}>Update Coating Data</div>
+          <div style={{ fontSize:13, opacity:0.6, marginTop:4 }}>As on {today}</div>
+          <div style={{ marginTop:10, background: isLive?"rgba(34,197,94,0.15)":"rgba(251,191,36,0.2)", border:`1px solid ${isLive?"rgba(34,197,94,0.3)":"rgba(251,191,36,0.4)"}`, borderRadius:8, padding:"7px 12px", fontSize:12, color: isLive?"#86efac":"#fcd34d" }}>
+            {isLive ? "🔴 Live — updates visible to everyone instantly" : "⚠ Firebase not configured — saving locally only"}
+          </div>
+        </div>
+
+        {done ? (
+          <div style={{ padding:40, textAlign:"center" }}>
+            <div style={{ fontSize:56, marginBottom:12 }}>✅</div>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800, color:"#0f172a" }}>Submitted!</div>
+            <div style={{ color:"#64748b", marginTop:8, fontSize:14 }}><b>{selLoc?.name}</b> updated</div>
+            <div style={{ marginTop:6, fontSize:13, color:"#94a3b8" }}>Bkg: {bkg} · Estimate: {est}</div>
+            <button onClick={reset} style={{ marginTop:24, background:"#1e3a5f", color:"#fff", border:"none", borderRadius:12, padding:"12px 28px", cursor:"pointer", fontWeight:700, fontSize:14 }}>Submit Another</button>
+          </div>
+        ) : (
+          <div style={{ padding:28 }}>
+
+            {/* Name */}
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Your Name</label>
+              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Manager name" style={S.inp} />
+            </div>
+
+            {/* Location */}
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Location *</label>
+              <select value={loc} onChange={e=>setLoc(e.target.value)} style={{ ...S.inp, background:"#fff" }}>
+                <option value="">-- Select your location --</option>
+                {Object.entries(CLUSTERS).map(([cluster, ids]) => (
+                  <optgroup key={cluster} label={cluster}>
+                    {ids.map(id => {
+                      const l = LOCATIONS.find(x => x.id === id);
+                      return <option key={id} value={id}>{l?.name}</option>;
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+
+            {/* Target pill */}
+            {loc && (
+              <div style={{ background:"#f0f9ff", border:"1px solid #bae6fd", borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:"#0369a1", display:"flex", gap:20 }}>
+                <span><b>Apr Target:</b> {selLoc?.aprTgt}</span>
+                <span><b>Q1 Target:</b> {selLoc?.q1Tgt}</span>
+              </div>
+            )}
+
+            {/* Numbers */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+              {[{ label:"Bkg Till Date *", val:bkg, set:setBkg }, { label:"Estimate Till Date *", val:est, set:setEst }].map(({ label, val, set }) => (
+                <div key={label}>
+                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</label>
+                  <input type="number" value={val} onChange={e=>set(e.target.value)} placeholder="0" min="0"
+                    style={{ ...S.inp, fontSize:24, fontWeight:800, textAlign:"center", color:"#0f172a" }} />
+                </div>
+              ))}
+            </div>
+
+            {err && <div style={{ background:"#fef2f2", border:"1px solid #fca5a5", borderRadius:8, padding:"8px 12px", fontSize:13, color:"#dc2626", marginBottom:14 }}>{err}</div>}
+
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              style={{
+                width:"100%", padding:"14px",
+                background: canSubmit ? "linear-gradient(135deg,#1e3a5f,#2563eb)" : "#e2e8f0",
+                color: canSubmit ? "#fff" : "#94a3b8",
+                border:"none", borderRadius:12, fontSize:15, fontWeight:700,
+                cursor: canSubmit ? "pointer" : "not-allowed", transition:"all 0.2s",
+              }}
+            >
+              {saving ? "Saving…" : "Submit Update"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MAIN APP
+// ════════════════════════════════════════════════════════════════════
+function CoatingTracker() {
+  const [view,       setView]       = useState("dashboard");
+  const [data,       setData]       = useState({});
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  const firebase = useFirebase();
+
+  // Wire up data source
+  useEffect(() => {
+    const setLatestTime = d => {
+      const times = Object.values(d).map(v=>v.updatedAt).filter(Boolean).sort().reverse();
+      if (times[0]) setLastUpdate(new Date(times[0]).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}));
+    };
+
+    if (firebase.ready) {
+      // Firebase: real-time listener — dashboard auto-refreshes for everyone
+      return firebase.listen(snapshot => {
+        setData(snapshot);
+        setLatestTime(snapshot);
+      });
+    } else {
+      // Fallback: localStorage
+      const d = localDB.read();
+      setData(d);
+      setLatestTime(d);
+    }
+  }, [firebase.ready]);
+
+  const handleSubmit = async (locId, bkg, est, name) => {
+    if (firebase.ready) {
+      await firebase.write(locId, bkg, est, name);
+      // data updates automatically via listener above
+    } else {
+      const updated = localDB.write(locId, bkg, est, name);
+      setData(updated);
+      setLastUpdate(new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}));
+    }
+  };
+
+  const allArenaIds = ARENA_CLUSTERS.flatMap(c => CLUSTERS[c]);
+  const allNexaIds  = CLUSTERS["Nexa"];
+  const allIds      = [...allArenaIds, ...allNexaIds];
+
+  if (view === "form") {
+    return <FormView onBack={()=>setView("dashboard")} onSubmit={handleSubmit} isLive={firebase.ready} />;
+  }
+
+  const kpis = [
+    { label:"Q1 Target",          value:sumTgt(allIds,"q1Tgt"),                                                   accent:"#1e3a5f" },
+    { label:"Apr Target",         value:sumTgt(allIds,"aprTgt"),                                                   accent:"#7c3aed" },
+    { label:"Bkg Till Date",      value:sum(allIds,data,"bkg"),                                                    accent:"#0891b2" },
+    { label:"Estimate Till Date", value:sum(allIds,data,"estimate"),                                               accent:"#059669" },
+    { label:"April Gap",          value:sumTgt(allIds,"aprTgt")-sum(allIds,data,"bkg")-sum(allIds,data,"estimate"),accent:"#dc2626" },
+  ];
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#f1f5f9", fontFamily:"'DM Sans',sans-serif" }}>
+
+      {/* Top bar */}
+      <div style={{ background:"linear-gradient(135deg,#0f172a,#1e3a5f)", padding:"18px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+        <div>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800, color:"#fff", display:"flex", alignItems:"center", gap:10 }}>
+            Coating Progress Report
+            <span style={{ fontSize:11, padding:"2px 9px", borderRadius:99, background:firebase.ready?"rgba(34,197,94,0.2)":"rgba(251,191,36,0.2)", color:firebase.ready?"#86efac":"#fcd34d", fontFamily:"'DM Sans',sans-serif" }}>
+              {firebase.ready ? "🔴 LIVE" : "LOCAL"}
+            </span>
+          </div>
+          <div style={{ fontSize:12, color:"#94a3b8", marginTop:3 }}>
+            Q1 Till Date · {today}
+            {lastUpdate && <span> · Last update: <b style={{color:"#cbd5e1"}}>{lastUpdate}</b></span>}
+          </div>
+        </div>
+        <button onClick={()=>setView("form")} style={{ background:"#f97316", color:"#fff", border:"none", borderRadius:12, padding:"11px 22px", fontWeight:700, fontSize:14, cursor:"pointer", boxShadow:"0 4px 14px rgba(249,115,22,0.4)" }}>
+          + Update Data
+        </button>
+      </div>
+
+      {/* KPI cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, padding:"20px 20px 0" }}>
+        {kpis.map(({ label, value, accent }) => (
+          <div key={label} style={{ background:"#fff", borderRadius:14, padding:"16px 18px", boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderTop:`3px solid ${accent}` }}>
+            <div style={{ fontSize:10, color:"#94a3b8", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</div>
+            <div style={{ fontSize:30, fontWeight:800, color:accent, fontFamily:"'Syne',sans-serif", marginTop:4 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Firebase setup banner */}
+      {!IS_CONFIGURED && (
+        <div style={{ margin:"16px 20px 0", background:"#fffbeb", border:"1.5px solid #fcd34d", borderRadius:14, padding:"14px 18px" }}>
+          <div style={{ fontWeight:700, fontSize:13, color:"#92400e", marginBottom:6 }}>🔥 Connect Firebase to go LIVE</div>
+          <div style={{ fontSize:12, color:"#78350f", lineHeight:1.9 }}>
+            <b>Step 1</b> → <a href="https://console.firebase.google.com" target="_blank" style={{color:"#b45309"}}>console.firebase.google.com</a> → New project → Realtime Database → Start in test mode<br/>
+            <b>Step 2</b> → Project Settings → Add web app → Copy the config object<br/>
+            <b>Step 3</b> → Replace <code style={{background:"#fef3c7",padding:"1px 5px",borderRadius:4}}>FIREBASE_CONFIG</code> at top of <code>coating-tracker.jsx</code><br/>
+            <b>Step 4</b> → Push to GitHub → Connect to <a href="https://vercel.com" target="_blank" style={{color:"#b45309"}}>vercel.com</a> → Deploy free → Share link ✅
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={{ margin:"16px 20px 24px", background:"#fff", borderRadius:16, overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,0.08)" }}>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead>
+              <tr style={{ background:"#0f172a" }}>
+                <th style={{ ...S.th, textAlign:"left", paddingLeft:14, color:"#e2e8f0" }}>LOCATION</th>
+                <th style={S.th}>Q1 TGT</th>
+                <th style={S.th}>APR TGT</th>
+                <th style={{ ...S.th, color:"#7dd3fc" }}>BKG TILL DATE</th>
+                <th style={{ ...S.th, color:"#86efac" }}>ESTIMATE TILL DATE</th>
+                <th style={{ ...S.th, color:"#fca5a5" }}>APR GAP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Arena */}
+              <SectionDivider label="Arena" bg="#f8fafc" />
+              {ARENA_CLUSTERS.map(cluster => (
+                <React.Fragment key={cluster}>
+                  {CLUSTERS[cluster].map(id => <LocationRow key={id} id={id} data={data} />)}
+                  <ClusterRow
+                    label={CLUSTER_WITH_TOTAL.includes(cluster) ? `${cluster} Total` : cluster}
+                    ids={CLUSTERS[cluster]}
+                    data={data}
+                  />
+                </React.Fragment>
+              ))}
+              <TotalRow label="Arena Gujarat Total" ids={allArenaIds} data={data} shade="#1e293b" />
+
+              {/* Nexa */}
+              <SectionDivider label="Nexa" bg="#f0f9ff" />
+              {CLUSTERS["Nexa"].map(id => <LocationRow key={id} id={id} data={data} />)}
+              <TotalRow label="Nexa Gujarat Total" ids={allNexaIds} data={data} shade="#1e293b" />
+
+              {/* Grand total */}
+              <TotalRow label="Group Total" ids={allIds} data={data} shade="#0f172a" />
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding:"10px 16px", background:"#fef9c3", fontSize:12, color:"#92400e", fontWeight:600 }}>
+          As on date {today}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<CoatingTracker />);
+  </script>
+</body>
+</html>
