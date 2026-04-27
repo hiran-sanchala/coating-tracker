@@ -1,1 +1,4 @@
-import CoatingTracker from '../coating-tracker'; export default function App() {   return <CoatingTracker />; }
+import CoatingTracker from '../coating-tracker';
+export default function App() {
+  return <CoatingTracker />;
+}
