@@ -511,11 +511,23 @@ function FormView({onBack, onSubmit, isLive, existingData}) {
 // ══════════════════════════════════════════
 function downloadImage(ref) {
   if (!ref.current) return;
-  html2canvas(ref.current,{scale:2,backgroundColor:"#f1f5f9",useCORS:true,logging:false}).then(canvas=>{
-    const a=document.createElement("a");
-    a.download=`Coating-Report-${new Date().toLocaleDateString("en-IN").replace(/\//g,"-")}.png`;
-    a.href=canvas.toDataURL("image/png"); a.click();
-  });
+  // Temporarily remove scroll height limit so FULL table is captured
+  const wrap = ref.current.querySelector(".table-wrap");
+  if (wrap) { wrap.style.maxHeight="none"; wrap.style.overflowY="visible"; }
+  setTimeout(() => {
+    html2canvas(ref.current, {
+      scale: 2, backgroundColor: "#f1f5f9", useCORS: true, logging: false,
+      scrollX: 0, scrollY: 0,
+      windowWidth: document.documentElement.scrollWidth,
+      windowHeight: ref.current.scrollHeight + 200,
+    }).then(canvas => {
+      // Restore scroll
+      if (wrap) { wrap.style.maxHeight=""; wrap.style.overflowY=""; }
+      const a = document.createElement("a");
+      a.download = `Coating-Report-${new Date().toLocaleDateString("en-IN").replace(/\//g,"-")}.png`;
+      a.href = canvas.toDataURL("image/png"); a.click();
+    });
+  }, 120);
 }
 
 // ══════════════════════════════════════════
@@ -546,7 +558,8 @@ function CoatingTracker() {
 
   const handleDownload = () => {
     setCapturing(true);
-    setTimeout(()=>{ downloadImage(tableRef); setTimeout(()=>setCapturing(false),1000); },100);
+    downloadImage(tableRef);
+    setTimeout(() => setCapturing(false), 1500);
   };
 
   const handleLoginSuccess = (role) => {
