@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coating Progress Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'DM Sans', sans-serif; background: #f1f5f9; color: #0f172a; min-height: 100vh; }
+      #root { min-height: 100vh; }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #f1f5f9; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      /* ── Top bar responsive ── */
+      .topbar-title { font-size: 16px; }
+      .topbar-sub   { font-size: 10px; }
+      @media (max-width: 480px) {
+        .topbar-title { font-size: 13px; }
+        .topbar-sub   { display: none; }
+      }
+
+      /* ── KPI cards ── */
+      .kpi-label { font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+      .kpi-val   { font-size: 20px; font-weight: 800; font-family: 'Syne', sans-serif; margin-top: 2px; }
+      @media (max-width: 480px) {
+        .kpi-val { font-size: 15px; }
+      }
+
+      /* ── Search bar ── */
+      .search-bar {
+        width: 100%;
+        padding: 9px 14px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        font-size: 13px;
+        outline: none;
+        font-family: inherit;
+        transition: border-color 0.15s;
+      }
+      .search-bar:focus { border-color: #3b82f6; }
+      .search-bar::placeholder { color: #94a3b8; }
+
+      /* ── Report table ── */
+      .table-wrap {
+  	overflow-x: auto;
+  	max-height: 65vh;
+  	overflow-y: auto;
+  	-webkit-overflow-scrolling: touch;
+	}
+      .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .report-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      /* ── Pending dot ── */
+      .pending-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #ef4444;
+        margin-left: 5px;
+        vertical-align: middle;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.4; }
+      }
+
+      /* ── Location name / meta ── */
+      .loc-name { font-weight: 500; font-size: 12px; }
+      .loc-meta  { display: block; font-size: 9px; color: #94a3b8; margin-top: 1px; }
+
+      /* ══════════════════════════════════
+         UPDATE FORM styles
+      ══════════════════════════════════ */
+
+      /* Search bar inside form */
+      .search-bar {
+        display: block;
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 13px;
+        outline: none;
+        font-family: inherit;
+      }
+
+      /* Cluster section wrapper */
+      .cluster-section {
+        margin-bottom: 12px;
+      }
+
+      /* Cluster header row */
+      .cluster-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 4px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: rgba(255,255,255,0.7);
+        margin-bottom: 6px;
+      }
+
+      /* Select All / Deselect All button in form */
+      .cluster-btn {
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.25);
+        color: #fff;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background 0.15s;
+      }
+      .cluster-btn:hover { background: rgba(255,255,255,0.25); }
+
+      /* Outlet card */
+      .outlet-card {
+        background: #fff;
+        border-radius: 12px;
+        margin-bottom: 8px;
+        overflow: hidden;
+        border: 2px solid transparent;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .outlet-card.active {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+      }
+
+      /* Outlet card header (tap zone) */
+      .outlet-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .outlet-header:hover { background: #f8fafc; }
+
+      /* Inputs inside outlet card */
+      .outlet-inputs {
+        padding: 0 14px 14px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+        border-top: 1px solid #f1f5f9;
+        padding-top: 12px;
+      }
+
+      /* Label above number input */
+      .inp-label {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+      }
+
+      /* Number input inside outlet card */
+      .num-inp {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1.5px solid #e2e8f0;
+        font-size: 16px;
+        font-weight: 700;
+        color: #0f172a;
+        background: #f8fafc;
+        outline: none;
+        font-family: inherit;
+        text-align: center;
+        transition: border-color 0.15s;
+        -moz-appearance: textfield;
+      }
+      .num-inp:focus { border-color: #3b82f6; background: #fff; }
+      .num-inp::-webkit-outer-spin-button,
+      .num-inp::-webkit-inner-spin-button { -webkit-appearance: none; }
+      .num-inp::placeholder { color: #cbd5e1; font-weight: 400; }
+    </style>
+    <script type="module" crossorigin src="/assets/main-IBtb_m0V.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-BUwq2lFE.js">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
